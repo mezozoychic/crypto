@@ -5,28 +5,36 @@
 #include <stdlib.h>
 
 
+void print_hex_str(uint8_t *str, unsigned size)
+{
+    for (int i = 0; i < size; ++i)
+        printf("%02x", str[i]);
+
+    printf("\n");
+}
+
 // number of operations in each round
-#define n_ops  16
+#define md5_n_ops  16
 
 // size of plain text block in bytes
 // 512 / 8 = 64
-#define size_pt_block  64
+#define md5_size_pt_block  64
 
 // size of cipher_text block in bytes
-#define size_ct_block  16
+#define md5_size_ct_block  16
 
 // number of 32bit words in 512bit block
-#define n_words  16
+#define md5_n_words  16
 
 // number of rounds
-#define n_rounds  4
+#define md5_n_rounds  4
 
 // size of 32bit word in bytes
-#define w_size  4
+#define md5_w_size  4
 
 
 // Table Constants
-uint32_t table_const[64];
+uint32_t md5_table_const[64];
 
 // IV
 uint32_t a = 0x67452301;
@@ -53,27 +61,19 @@ uint32_t left_rotate(uint32_t x, unsigned n)
 }
 
 
-void print_hex_str(uint8_t *str, unsigned size)
-{
-    for (int i = 0; i < size; ++i)
-        printf("%02x", str[i]);
-
-    printf("\n");
-}
-
-
-void md5_encrypt(const uint8_t *text, uint8_t *cipher_text)
+uint8_t *md5_encrypt(const uint8_t *text)
 {
     unsigned n_blocks, i, j, n, S;
     uint64_t length, F, X, T, tmp;
-    uint8_t *plain_text, *pt_ptr;
+    uint8_t *plain_text, *cipher_text, *pt_ptr, *ct_ptr;
 
-    length = strlen(text);
-    n_blocks = (length / size_pt_block + 1);
-    plain_text = (uint8_t *) malloc((n_blocks * size_pt_block) * sizeof(uint8_t));
+    length = strlen((char *) text);
+    n_blocks = (length / md5_size_pt_block + 1);
+    plain_text = (uint8_t *) malloc((n_blocks * md5_size_pt_block) * sizeof(uint8_t));
+	cipher_text = (uint8_t *) malloc((n_blocks * md5_size_ct_block) * sizeof(uint8_t));
 
     // copy text to the block
-    for (i = 0, n = strlen(text); i < n; ++i)
+    for (i = 0, n = strlen((char *) text); i < n; ++i)
         plain_text[i] = text[i];
 
     // uppend 1 bit
@@ -81,7 +81,7 @@ void md5_encrypt(const uint8_t *text, uint8_t *cipher_text)
 
     // fill remaining zeroes
     // - 8 bytes left for size
-    for (++i; i < (n_blocks * size_pt_block - 8); ++i)
+    for (++i; i < (n_blocks * md5_size_pt_block - 8); ++i)
         plain_text[i] = 0;
 
     // add length in bits (little-endian)
@@ -103,17 +103,18 @@ void md5_encrypt(const uint8_t *text, uint8_t *cipher_text)
 
     // calculate table constants
     uint64_t two_pow_32 = pow(2, 32);
-    for (i = 0, n = sizeof(table_const) / sizeof(uint32_t); i < n; ++i)
+    for (i = 0, n = sizeof(md5_table_const) / sizeof(uint32_t); i < n; ++i)
     {
         //
-        table_const[i] = two_pow_32 * fabs(sin(i + 1));
+        md5_table_const[i] = two_pow_32 * fabs(sin(i + 1));
     }
 
     // main loop
 	pt_ptr = plain_text;
+	ct_ptr = cipher_text;
     while (n_blocks)
     {
-        for (i = 0, n = n_ops * n_rounds; i < n; ++i)
+        for (i = 0, n = md5_n_ops * md5_n_rounds; i < n; ++i)
         {
             if (i < 16)
             {
@@ -156,8 +157,8 @@ void md5_encrypt(const uint8_t *text, uint8_t *cipher_text)
                 j = (7 * i) % 16;
             }
 
-            X = get_le_word32(plain_text + (j * w_size));
-            T = table_const[i];
+            X = get_le_word32(plain_text + (j * md5_w_size));
+            T = md5_table_const[i];
 
             tmp = B + left_rotate((A + F + X + T), S);
             A = D;
@@ -190,25 +191,24 @@ void md5_encrypt(const uint8_t *text, uint8_t *cipher_text)
         *(cipher_text + 15) = (uint8_t) (D >> 24);
 
         --n_blocks;
-        plain_text += size_pt_block;
-        cipher_text += size_ct_block;
+        plain_text += md5_size_pt_block;
+        cipher_text += md5_size_ct_block;
     }
 
     free(pt_ptr);
+	return ct_ptr;
 }
 
 
 int main()
 {
-    uint8_t *text = "jytyrskdtylf;;/.c,xm";
+    uint8_t *text = "password";
 
     unsigned lenght = strlen(text);
-    unsigned n = (lenght / size_pt_block + 1) * size_ct_block;
-    uint8_t *cipher_text = (uint8_t *) malloc(n * sizeof(uint8_t));
+    unsigned n = (lenght / md5_size_pt_block + 1) * md5_size_ct_block;
+    uint8_t *cipher_text = md5_encrypt(text);
 
-    md5_encrypt(text, cipher_text);
-
-    print_hex_str(cipher_text, 16);
+    print_hex_str(cipher_text, n);
 
     free(cipher_text);
 }
