@@ -12,10 +12,10 @@ uint8_t Gmul_0B(uint8_t x);
 uint8_t Gmul_0D(uint8_t x);
 uint8_t Gmul_0E(uint8_t x);
 void aes_key_expansion(const uint8_t *secret_key, uint8_t *sub_keys);
-void aes_encrypt(const uint8_t *secret_key, uint8_t *initialization_vector, 
-                const uint8_t *plain_text, uint8_t *cipher_text);
-unsigned aes_decrypt(const uint8_t *secret_key, const uint8_t *IV, unsigned nblocks,
-                uint8_t *cipher_text, uint8_t *plain_text);
+uint8_t *aes_encrypt(const uint8_t *secret_key, uint8_t *initialization_vector, 
+                const uint8_t *plain_text);
+uint8_t *aes_decrypt(const uint8_t *secret_key, const uint8_t *IV, unsigned cipher_len,
+                uint8_t *cipher_text);
 
 #define AES_128 1
 #define AES_192 0
@@ -25,22 +25,20 @@ unsigned aes_decrypt(const uint8_t *secret_key, const uint8_t *IV, unsigned nblo
 #define AES_CBC  1
 // #define PCBC 0
 
-#define BLOCKSIZE 16
+#define AES_BLOCKSIZE 16
 
 #if defined(AES_128) && (AES_128 == 1)
-#define KEYLEN   128
-#define ROUNDNUM 10
+#define AES_KEYLEN   128
+#define AES_ROUNDNUM 10
 #elif defined(AES_192) && (AES_192 == 1)
-#define KEYLEN   192
-#define ROUNDNUM 12
+#define AES_KEYLEN   192
+#define AES_ROUNDNUM 12
 #elif defined(AES_256) && (AES_256 == 1)
-#define KEYLEN   256
-#define ROUNDNUM 14
+#define AES_KEYLEN   256
+#define AES_ROUNDNUM 14
 #endif
 
-#define Nk (KEYLEN / 32)
-
-static char *secret_key = "6bc1bee22e409f96";
+#define Nk (AES_KEYLEN / 32)
 
 static const uint8_t s_box[16 * 16] = {
     0x63, 0x7c, 0x77, 0x7b, 0xf2, 0x6b, 0x6f, 0xc5, 0x30, 0x01, 0x67, 0x2b, 0xfe, 0xd7, 0xab, 0x76,
@@ -129,19 +127,19 @@ void aes_key_expansion(const uint8_t *secret_key, uint8_t *sub_keys)
 
     for (i = 0; i < Nk; ++i)
     {
-        sub_keys[(i * 4) + 0] = secret_key[(i * 4) + 0];
-        sub_keys[(i * 4) + 1] = secret_key[(i * 4) + 1];
-        sub_keys[(i * 4) + 2] = secret_key[(i * 4) + 2];
-        sub_keys[(i * 4) + 3] = secret_key[(i * 4) + 3];
+        *(sub_keys + i * 4 + 0) = *(secret_key + i * 4 + 0);
+        *(sub_keys + i * 4 + 1) = *(secret_key + i * 4 + 1);
+        *(sub_keys + i * 4 + 2) = *(secret_key + i * 4 + 2);
+        *(sub_keys + i * 4 + 3) = *(secret_key + i * 4 + 3);
     }
 
-    for (i = Nk; i < (4 * (ROUNDNUM + 1)); ++i)
+    for (i = Nk; i < (4 * (AES_ROUNDNUM + 1)); ++i)
     {
         j = (i - 1) * 4;
-        temp[0] = sub_keys[j + 0];
-        temp[1] = sub_keys[j + 1];
-        temp[2] = sub_keys[j + 2];
-        temp[3] = sub_keys[j + 3];
+        temp[0] = *(sub_keys + j + 0);
+        temp[1] = *(sub_keys + j + 1);
+        temp[2] = *(sub_keys + j + 2);
+        temp[3] = *(sub_keys + j + 3);
 
         if (i % Nk == 0)
         {
@@ -174,75 +172,78 @@ void aes_key_expansion(const uint8_t *secret_key, uint8_t *sub_keys)
 
         j = i * 4;
         k = (i - Nk) * 4;
-        sub_keys[j + 0] = sub_keys[k + 0] ^ temp[0];
-        sub_keys[j + 1] = sub_keys[k + 1] ^ temp[1];
-        sub_keys[j + 2] = sub_keys[k + 2] ^ temp[2];
-        sub_keys[j + 3] = sub_keys[k + 3] ^ temp[3];
+        *(sub_keys + j + 0) = *(sub_keys + k + 0) ^ temp[0];
+        *(sub_keys + j + 1) = *(sub_keys + k + 1) ^ temp[1];
+        *(sub_keys + j + 2) = *(sub_keys + k + 2) ^ temp[2];
+        *(sub_keys + j + 3) = *(sub_keys + k + 3) ^ temp[3];
     }
 
     // print_hex_str(sub_keys, 176);
 }
 
-void aes_encrypt(const uint8_t *secret_key, uint8_t *initialization_vector, 
-                 const uint8_t *text, uint8_t *cipher_text)
+uint8_t *aes_encrypt(const uint8_t *secret_key, uint8_t *initialization_vector, 
+                 const uint8_t *text)
 {
     uint8_t state[4][4], IV[4][4], a[4][4];
-    unsigned nblocks, pad_size, i, j, r_k_i;
-    uint8_t *sub_keys, *plain_text, *pt_ptr;
+    unsigned nblocks, pad_size, i, j, k, r_k_i;
+    uint8_t *sub_keys, *plain_text, *cipher_text;
     
-    nblocks = (strlen(text) / BLOCKSIZE) + 1;
+    nblocks = (strlen((char *) text) / AES_BLOCKSIZE) + 1;
+	cipher_text = (uint8_t *) malloc((nblocks * AES_BLOCKSIZE) * sizeof(uint8_t));
 
     // prepare plain text
-    plain_text = (uint8_t *) malloc((nblocks * BLOCKSIZE) * sizeof(uint8_t));
+    plain_text = (uint8_t *) malloc((nblocks * AES_BLOCKSIZE) * sizeof(uint8_t));
     for (i = 0; *text != '\0'; ++i)
         *(plain_text + i) = *text++;
 
-    pad_size = nblocks * BLOCKSIZE - i;
+    pad_size = nblocks * AES_BLOCKSIZE - i;
 
     // struct timeval time;
     // gettimeofday(&time, NULL);
     // double seed = (((time.tv_sec * 2654435789U) + time.tv_usec) * 2654435789U) + getpid();
     // srand(seed);
 
-    for (; i < (nblocks * BLOCKSIZE) - 1; ++i)
+    for (; i < (nblocks * AES_BLOCKSIZE) - 1; ++i)
         *(plain_text + i) = rand() % 255;
 
     *(plain_text + i) = pad_size;
 
     // printf("plain text: \n");
-    // print_hex_str(plain_text, nblocks * BLOCKSIZE);
+    // print_hex_str(plain_text, nblocks * AES_BLOCKSIZE);
 
     //prepare IV
     for (i = 0; i < 4; ++i)
     {
-        IV[0][i] = initialization_vector[i * 4 + 0];
-        IV[1][i] = initialization_vector[i * 4 + 1];
-        IV[2][i] = initialization_vector[i * 4 + 2];
-        IV[3][i] = initialization_vector[i * 4 + 3];
+		j = i * 4;
+
+        IV[0][i] = *(initialization_vector + j + 0);
+        IV[1][i] = *(initialization_vector + j + 1);
+        IV[2][i] = *(initialization_vector + j + 2);
+        IV[3][i] = *(initialization_vector + j + 3);
     }
 
 
     // expand key
-    sub_keys = (uint8_t*) malloc((ROUNDNUM + 1) * 4 * 4);
+    sub_keys = (uint8_t*) malloc((AES_ROUNDNUM + 1) * 4 * 4);
     aes_key_expansion(secret_key, sub_keys);
 
 
     // main loop
-    pt_ptr = plain_text;
-    memset(state[0], 0, BLOCKSIZE);
-    while (nblocks)
+    memset(state[0], 0, AES_BLOCKSIZE);
+    for (unsigned bi = 0; bi < nblocks; ++bi)
     {
         // CBC mode
         if (AES_CBC == 1)
         {
+			j = bi * AES_BLOCKSIZE;
             for (i = 0; i < 4; ++i)
             {
-                j = i * 4;
+                k = j + i * 4;
 
-                state[0][i] = *(plain_text + j + 0) ^ IV[0][i];
-                state[1][i] = *(plain_text + j + 1) ^ IV[1][i];
-                state[2][i] = *(plain_text + j + 2) ^ IV[2][i];
-                state[3][i] = *(plain_text + j + 3) ^ IV[3][i];
+                state[0][i] = *(plain_text + k + 0) ^ IV[0][i];
+                state[1][i] = *(plain_text + k + 1) ^ IV[1][i];
+                state[2][i] = *(plain_text + k + 2) ^ IV[2][i];
+                state[3][i] = *(plain_text + k + 3) ^ IV[3][i];
             }
         }
 
@@ -251,13 +252,13 @@ void aes_encrypt(const uint8_t *secret_key, uint8_t *initialization_vector,
         {
             j = i * 4;
 
-            state[0][i] = state[0][i] ^ sub_keys[j + 0];
-            state[1][i] = state[1][i] ^ sub_keys[j + 1];
-            state[2][i] = state[2][i] ^ sub_keys[j + 2];
-            state[3][i] = state[3][i] ^ sub_keys[j + 3];
+            state[0][i] = state[0][i] ^ *(sub_keys + j + 0);
+            state[1][i] = state[1][i] ^ *(sub_keys + j + 1);
+            state[2][i] = state[2][i] ^ *(sub_keys + j + 2);
+            state[3][i] = state[3][i] ^ *(sub_keys + j + 3);
         }
 
-        for (unsigned r_i = 0; r_i < ROUNDNUM; ++r_i)
+        for (unsigned r_i = 0; r_i < AES_ROUNDNUM; ++r_i)
         {
             // SBox() (substitution bytes)
             for (i = 0; i < 4; ++i)
@@ -307,7 +308,7 @@ void aes_encrypt(const uint8_t *secret_key, uint8_t *initialization_vector,
             //
             // Multiplications are according to GF(2^8) arithmetic.
             // Additions are XOR operations.
-            if (r_i != ROUNDNUM - 1)
+            if (r_i != AES_ROUNDNUM - 1)
             {
                 for (i = 0; i < 4; ++i)
                     for (j = 0; j < 4; ++j)
@@ -327,19 +328,23 @@ void aes_encrypt(const uint8_t *secret_key, uint8_t *initialization_vector,
             r_k_i = ((r_i + 1) * 4) * 4;
             for (i = 0; i < 4; ++i)
             {
-                state[0][i] = state[0][i] ^ sub_keys[r_k_i + i * 4 + 0];
-                state[1][i] = state[1][i] ^ sub_keys[r_k_i + i * 4 + 1];
-                state[2][i] = state[2][i] ^ sub_keys[r_k_i + i * 4 + 2];
-                state[3][i] = state[3][i] ^ sub_keys[r_k_i + i * 4 + 3];
+				j = i * 4;
+
+                state[0][i] = state[0][i] ^ *(sub_keys + r_k_i + j + 0);
+                state[1][i] = state[1][i] ^ *(sub_keys + r_k_i + j + 1);
+                state[2][i] = state[2][i] ^ *(sub_keys + r_k_i + j + 2);
+                state[3][i] = state[3][i] ^ *(sub_keys + r_k_i + j + 3);
             }
         }
 
+		j = bi * AES_BLOCKSIZE;
         for (i = 0; i < 4; ++i)
         {
-            *(cipher_text + (i * 4 + 0)) = state[0][i];
-            *(cipher_text + (i * 4 + 1)) = state[1][i];
-            *(cipher_text + (i * 4 + 2)) = state[2][i];
-            *(cipher_text + (i * 4 + 3)) = state[3][i];
+			k = j + i * 4;
+            *(cipher_text + k + 0) = state[0][i];
+            *(cipher_text + k + 1) = state[1][i];
+            *(cipher_text + k + 2) = state[2][i];
+            *(cipher_text + k + 3) = state[3][i];
         }
 
         //CBC mode
@@ -355,50 +360,53 @@ void aes_encrypt(const uint8_t *secret_key, uint8_t *initialization_vector,
                 IV[3][i] = state[3][i];
             }
         }
-
-        --nblocks;
-        plain_text += BLOCKSIZE;
-        cipher_text += BLOCKSIZE;
     }
 
-    free(pt_ptr);
+    free(plain_text);
+
+	return cipher_text;
 }
 
-unsigned aes_decrypt(const uint8_t *secret_key, const uint8_t *IV, unsigned nblocks,
-                     uint8_t *cipher_text, uint8_t *plain_text)
+
+uint8_t *aes_decrypt(const uint8_t *secret_key, const uint8_t *IV, unsigned cipher_len,
+                     uint8_t *cipher_text)
 {
+	unsigned nblocks = cipher_len / AES_BLOCKSIZE;
+	uint8_t *plain_text = (uint8_t *) malloc((nblocks * AES_BLOCKSIZE + 1) * sizeof(uint8_t));
     uint8_t state[4][4];
-    unsigned i, j, r_i, r_k_i, pad;
+    unsigned i, j, k, r_i, r_k_i, pad, pt_len;
 	uint8_t temp1, temp2;
 	uint8_t a[4][4];
-    uint8_t *sub_keys = (uint8_t*) malloc((ROUNDNUM + 1) * 4 * 4);
+    uint8_t *sub_keys = (uint8_t*) malloc((AES_ROUNDNUM + 1) * 4 * 4);
 
     aes_key_expansion(secret_key, sub_keys);
 
     
     for (unsigned bi = (nblocks-1); bi != -1; --bi)
     {
+		j = bi * AES_BLOCKSIZE;
         for (i = 0; i < 4; ++i)
         {
-            j = i * 4;
+            k = j + i * 4;
 
-            state[0][i] = cipher_text[bi * BLOCKSIZE + j + 0];
-            state[1][i] = cipher_text[bi * BLOCKSIZE + j + 1];
-            state[2][i] = cipher_text[bi * BLOCKSIZE + j + 2];
-            state[3][i] = cipher_text[bi * BLOCKSIZE + j + 3];
+            state[0][i] = *(cipher_text + k + 0);
+            state[1][i] = *(cipher_text + k + 1);
+            state[2][i] = *(cipher_text + k + 2);
+            state[3][i] = *(cipher_text + k + 3);
         }
 
 
-        for (r_i = ROUNDNUM; r_i > 0; --r_i)
+        for (r_i = AES_ROUNDNUM; r_i > 0; --r_i)
         {
             // AddRoundKey()
             r_k_i = (r_i * 4) * 4;
             for (i = 0; i < 4; ++i)
             {
-                state[0][i] = state[0][i] ^ sub_keys[r_k_i + i * 4 + 0];
-                state[1][i] = state[1][i] ^ sub_keys[r_k_i + i * 4 + 1];
-                state[2][i] = state[2][i] ^ sub_keys[r_k_i + i * 4 + 2];
-                state[3][i] = state[3][i] ^ sub_keys[r_k_i + i * 4 + 3];
+				j = r_k_i + i * 4;
+                state[0][i] = state[0][i] ^ *(sub_keys + j + 0);
+                state[1][i] = state[1][i] ^ *(sub_keys + j + 1);
+                state[2][i] = state[2][i] ^ *(sub_keys + j + 2);
+                state[3][i] = state[3][i] ^ *(sub_keys + j + 3);
             }
 
             // inverse MixColumns()
@@ -415,7 +423,7 @@ unsigned aes_decrypt(const uint8_t *secret_key, const uint8_t *IV, unsigned nblo
             //
             // Multiplications are according to GF(2^8) arithmetic.
             // Additions are XOR operations.
-            if (r_i != ROUNDNUM)
+            if (r_i != AES_ROUNDNUM)
             {
                 for (i = 0; i < 4; ++i)
                     for (j = 0; j < 4; ++j)
@@ -461,14 +469,15 @@ unsigned aes_decrypt(const uint8_t *secret_key, const uint8_t *IV, unsigned nblo
         }
 
         // AddRoundKey()
+		j = bi * AES_BLOCKSIZE;
         for (i = 0; i < 4; ++i)
         {
-            j = i * 4;
+            k = i * 4;
 
-            plain_text[bi * BLOCKSIZE + j + 0] = state[0][i] ^ sub_keys[j + 0];
-            plain_text[bi * BLOCKSIZE + j + 1] = state[1][i] ^ sub_keys[j + 1];
-            plain_text[bi * BLOCKSIZE + j + 2] = state[2][i] ^ sub_keys[j + 2];
-            plain_text[bi * BLOCKSIZE + j + 3] = state[3][i] ^ sub_keys[j + 3];
+            plain_text[j + k + 0] = state[0][i] ^ sub_keys[k + 0];
+            plain_text[j + k + 1] = state[1][i] ^ sub_keys[k + 1];
+            plain_text[j + k + 2] = state[2][i] ^ sub_keys[k + 2];
+            plain_text[j + k + 3] = state[3][i] ^ sub_keys[k + 3];
         }
 
         // CBC mode
@@ -480,10 +489,10 @@ unsigned aes_decrypt(const uint8_t *secret_key, const uint8_t *IV, unsigned nblo
                 {
                     j = i * 4;
 
-                    plain_text[bi * BLOCKSIZE + j + 0] ^= cipher_text[((bi - 1) * BLOCKSIZE) + j + 0];
-                    plain_text[bi * BLOCKSIZE + j + 1] ^= cipher_text[((bi - 1) * BLOCKSIZE) + j + 1];
-                    plain_text[bi * BLOCKSIZE + j + 2] ^= cipher_text[((bi - 1) * BLOCKSIZE) + j + 2];
-                    plain_text[bi * BLOCKSIZE + j + 3] ^= cipher_text[((bi - 1) * BLOCKSIZE) + j + 3];
+                    plain_text[bi * AES_BLOCKSIZE + j + 0] ^= cipher_text[((bi - 1) * AES_BLOCKSIZE) + j + 0];
+                    plain_text[bi * AES_BLOCKSIZE + j + 1] ^= cipher_text[((bi - 1) * AES_BLOCKSIZE) + j + 1];
+                    plain_text[bi * AES_BLOCKSIZE + j + 2] ^= cipher_text[((bi - 1) * AES_BLOCKSIZE) + j + 2];
+                    plain_text[bi * AES_BLOCKSIZE + j + 3] ^= cipher_text[((bi - 1) * AES_BLOCKSIZE) + j + 3];
                 }
             }
             else if (bi == 0)
@@ -502,37 +511,30 @@ unsigned aes_decrypt(const uint8_t *secret_key, const uint8_t *IV, unsigned nblo
     }
 
     // Delete padding
-    pad = plain_text[nblocks * BLOCKSIZE - 1];
-    for (i = nblocks * BLOCKSIZE, j = pad; j > 0; --j, --i)
-    {
-        plain_text[i] = '\0';
-    }
-    
-    // printf("size: %d\n", (nblocks-1) * BLOCKSIZE + (BLOCKSIZE - pad));
-    return (nblocks-1) * BLOCKSIZE + (BLOCKSIZE - pad);
+    pad = plain_text[nblocks * AES_BLOCKSIZE - 1];
+	pt_len = (nblocks-1) * AES_BLOCKSIZE + (AES_BLOCKSIZE - pad);
+	plain_text[pt_len] = '\0';
+
+	return plain_text;
 }
 
 
 int main()
 {
-    uint8_t *text = "text";
+    uint8_t *text = "secret text";
     uint8_t *IV = "1122334455667788";
-
-
+    char *secret_key = "6bc1bee22e409f96";
     printf("text: %s\n", text);
 
-    unsigned nblocks = (strlen(text) / BLOCKSIZE) + 1;
-    uint8_t *cipher_text = (uint8_t *) malloc((nblocks * BLOCKSIZE) * sizeof(uint8_t));
-	uint8_t *decrypted_text = (uint8_t *) malloc((nblocks * BLOCKSIZE + 1) * sizeof(uint8_t));
+    uint8_t *cipher_text = aes_encrypt(secret_key, IV, text);
 
-    aes_encrypt(secret_key, IV, text, cipher_text);
-    // printf("cipher text: \n");
-	// print_hex_str(cipher_text, nblocks * BLOCKSIZE);
+    unsigned nblocks = (strlen(text) / AES_BLOCKSIZE) + 1;
+	unsigned n = nblocks * AES_BLOCKSIZE;
+    printf("cipher text: \n");
+	print_hex_str(cipher_text, n);
 
-    unsigned len = aes_decrypt(secret_key, IV, nblocks, cipher_text, decrypted_text);
-    decrypted_text[len] = '\0';
-    printf("decrypted: %s\n", decrypted_text);
-    
+	uint8_t *decrypted_text = aes_decrypt(secret_key, IV, n, cipher_text);
+    printf("decrypted text: %s\n", decrypted_text);
 
 
     free(cipher_text);
