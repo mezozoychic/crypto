@@ -5,7 +5,7 @@
 #include <unistd.h>
 #include <string.h>
 
-void print_hex_str(uint8_t *str, unsigned size);
+void print_hex_str(uint8_t *label, uint8_t *str, unsigned size);
 uint8_t xtime(uint8_t x);
 uint8_t Gmul_09(uint8_t x);
 uint8_t Gmul_0B(uint8_t x);
@@ -81,43 +81,29 @@ static const uint8_t r_s_box[256] = {
 static const uint8_t r_con[10] = { 0x01, 0x02, 0x04, 0x08, 0x10, 0x20, 0x40, 0x80, 0x1b, 0x36 };
 
 
-void print_hex_str(uint8_t *str, unsigned size)
+void print_hex_str(uint8_t *label, uint8_t *str, unsigned size)
 {
+    printf("%s: ", label);
     for (int i = 0; i < size; ++i)
         printf("%02x", str[i]);
 
     printf("\n");
 }
 
-uint8_t xtime(uint8_t x)
-{
-    return  (x << 1) ^ (((x >> 7) & 1) * 0x1b);
-}
+
+#define xtime(x)  ((x) << 1) ^ ((((x) >> 7) & 1) * 0x1b)
 
 // x * 9 = (((x * 2) * 2) * 2) ^ x;
-uint8_t Gmul_09(uint8_t x)
-{
-    return xtime(xtime(xtime(x))) ^ x;
-}
+#define Gmul_09(x)  xtime(xtime(xtime(x))) ^ x
 
 // x * 11 = ((((x * 2) * 2) + x) * 2) + x;
-uint8_t Gmul_0B(uint8_t x)
-{
-    return xtime(xtime(xtime(x)) ^ x) ^ x;
-}
+#define Gmul_0B(x)  xtime(xtime(xtime(x)) ^ x) ^ x
 
 // x * 13 = ((((x * 2) + x) * 2) * 2) + x
-uint8_t Gmul_0D(uint8_t x)
-{
-    return xtime(xtime(xtime(x) ^ x)) ^ x;
-}
+#define Gmul_0D(x)  xtime(xtime(xtime(x) ^ x)) ^ x
 
 // x * 14 = ((((x * 2) + x) * 2) + x) * 2
-uint8_t Gmul_0E(uint8_t x)
-{
-    uint8_t r = xtime(xtime(xtime(x) ^ x) ^ x);
-	return r;
-}
+#define Gmul_0E(x)  xtime(xtime(xtime(x) ^ x) ^ x)
 
 
 void aes_key_expansion(const uint8_t *secret_key, uint8_t *sub_keys)
@@ -530,8 +516,7 @@ int main()
 
     unsigned nblocks = (strlen(text) / AES_BLOCKSIZE) + 1;
 	unsigned n = nblocks * AES_BLOCKSIZE;
-    printf("cipher text: \n");
-	print_hex_str(cipher_text, n);
+	print_hex_str("cipher text", cipher_text, n);
 
 	uint8_t *decrypted_text = aes_decrypt(secret_key, IV, n, cipher_text);
     printf("decrypted text: %s\n", decrypted_text);
