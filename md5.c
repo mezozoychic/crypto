@@ -59,6 +59,7 @@ uint32_t left_rotate(uint32_t x, unsigned n)
 {
     return (x << n) | (x >> (32 - n));
 }
+// #define left_rotate(x, n) ((uint32_t) (x) << (n)) | ((x) >> (32 - (n)))
 
 
 uint8_t *md5_encrypt(const uint8_t *text)
@@ -204,10 +205,10 @@ int main()
 {
     uint8_t *text = "password";
 
-    unsigned lenght = strlen(text);
-    unsigned n = (lenght / md5_size_pt_block + 1) * md5_size_ct_block;
     uint8_t *cipher_text = md5_encrypt(text);
 
+    unsigned lenght = strlen(text);
+    unsigned n = (lenght / md5_size_pt_block + 1) * md5_size_ct_block;
     print_hex_str(cipher_text, n);
 
     free(cipher_text);
